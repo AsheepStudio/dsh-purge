@@ -3,9 +3,11 @@
 This is an independent compatibility build of
 [YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge), based on upstream
 commit `6c1d638d1bdcc45ede50fc30249c753d58122a51`. The original author's code,
-attribution, license, prompts, and existing patch behavior are retained.
+attribution, license, and prompts are retained. It includes the first compatibility
+delivery `d19115cc20fcfb08f1ad3548feef973ee7993e17` plus the restart fix below.
 
-Version: `1.1.71-compat.0.2.1rc2.1`.
+Version: `1.1.71-compat.0.2.1rc2.2`.
+Delivery branch: `fix/dsh-rc2-restart-20261018-025257`.
 
 The built-in update, channel-switch, and version-rollback operations are disabled
 in this compatibility build: they otherwise install the original upstream code
@@ -22,6 +24,21 @@ skipped, and the subsequent host-content check prevents restart. This build adds
 one exact matcher for that published structure and retains the required-context
 filter. The old matchers and the restart-readiness checks are unchanged.
 
+The second compatibility build fixes a separate restart race. The sealed Windows
+restart path exited the Host after a fixed 1.5 seconds when no runtime service was
+available (2 seconds with one). A slow or failed external helper left the old
+Electron shell running, which then reported `dsh desktop host stopped`. The Host
+now stays alive until the helper stops the application; it does not invoke an
+unverified runtime restart service. The helper-owned unpacked restart likewise
+does not exit the Host after 250 ms. Async helper/WSH spawn errors are logged.
+This does not suppress the desktop shell's real fatal-error reporting.
+
+The PowerShell swap helper writes its own progress and failures to
+`%TEMP%\dsh-purge-asar-swap.log`, validates that the archive belongs to the selected
+installation, and treats archive-move errors as failures. It checks the move
+result before relaunching and logs a failed launch. An API result of `scheduled`
+or `restarting` still means dispatch, not verified completion of the new desktop.
+
 Offline regression tests cover published 0.2.0-rc.2 and 0.2.1-rc.2 assembly
 fragments, required-context behavior, section handling, newline variants,
 repeat application, and rejection of unknown context-policy changes. Full
@@ -29,6 +46,9 @@ published system-prompt modules are also checked separately during release.
 These checks do not establish compatibility of every other upstream patch or
 verify the actual Electron desktop restart, ASAR handoff, model response, or
 the user's installation. Apply must still pass the normal host checks.
+Restart regression tests trap real public API calls before process operations;
+Windows helper tests use fake install files and stub process operations. They do
+not stop or start a real Harness installation.
 
 ## Install on Windows
 
@@ -37,7 +57,7 @@ the user's installation. Apply must still pass the normal host checks.
 3. Use that desktop-installed `dsh` to install the supplied archive:
 
    ```powershell
-   dsh plugin --profile desktop add "C:\path\to\dsh-purge-1.1.71-compat.0.2.1rc2.1.tgz"
+   dsh plugin --profile desktop add "C:\path\to\dsh-purge-1.1.71-compat.0.2.1rc2.2.tgz"
    ```
 
    If using a GitHub archive, use the pinned commit URL supplied with the release,
@@ -52,6 +72,9 @@ the user's installation. Apply must still pass the normal host checks.
    applied. If it is skipped, if restart is cancelled, or if the process still
    reports that it cannot read the patched files, preserve the output for
    diagnosis. Do not move, rename, or delete `app.asar` to bypass a failed check.
+   If a crash dialog from the old build is still open, choose Exit and fully quit
+   before installing this build. Do not use the broad profile-reset recovery
+   button as an update step.
 
 ## Recovery
 
@@ -72,6 +95,7 @@ specific failed path and its available backups before further changes.
 node --test tests/*.test.mjs
 ```
 
+Run the complete suite on Windows with Node 24.21.0 and Windows PowerShell 5.1.
 No package installation or running Harness instance is needed. The patch tests
 use the pure text replacement API and a mocked assembly function. Updater tests
 verify the compatibility guard in isolation. Tests do not locate or patch

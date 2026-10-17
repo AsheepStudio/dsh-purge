@@ -1,4 +1,4 @@
-> 本分支为独立兼容修正版 `1.1.71-compat.0.2.1rc2.1`，适配 Harness 0.2.1-rc.2 的第 40 项补丁。
+> 本分支为独立兼容修正版 `1.1.71-compat.0.2.1rc2.2`，修复 Harness 0.2.1-rc.2 第 40 项补丁与桌面重启提前退出。
 > [修改范围、验证限制与安装说明](docs/compat-0.2.1-rc.2.md)。
 > 原项目及作者：[YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge)。
 
