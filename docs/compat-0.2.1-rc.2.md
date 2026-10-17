@@ -4,10 +4,11 @@ This is an independent compatibility build of
 [YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge), based on upstream
 commit `6c1d638d1bdcc45ede50fc30249c753d58122a51`. The original author's code,
 attribution, license, and prompts are retained. It includes the first compatibility
-delivery `d19115cc20fcfb08f1ad3548feef973ee7993e17` plus the restart fix below.
+delivery `d19115cc20fcfb08f1ad3548feef973ee7993e17` and second delivery
+`73811c9dd82683b3da450c71f69bbe0c72d146d2`, plus the launcher fix below.
 
-Version: `1.1.71-compat.0.2.1rc2.2`.
-Delivery branch: `fix/dsh-rc2-restart-20261018-025257`.
+Version: `1.1.71-compat.0.2.1rc2.3`.
+Delivery branch: `fix/dsh-rc2-launch-20261018-032235`.
 
 The built-in update, channel-switch, and version-rollback operations are disabled
 in this compatibility build: they otherwise install the original upstream code
@@ -39,6 +40,26 @@ installation, and treats archive-move errors as failures. It checks the move
 result before relaunching and logs a failed launch. An API result of `scheduled`
 or `restarting` still means dispatch, not verified completion of the new desktop.
 
+The third build fixes the Windows helper launcher. On Windows with Node 24.21.0
+and Windows PowerShell 5.1, direct `detached: true` PowerShell startup was reproduced
+exiting with code 0 before executing the script, leaving no helper log. Changing
+to `detached: false` let the script start, but did not survive parent shutdown in
+the isolated probes. The new launcher uses the system `conhost.exe --headless`
+with system PowerShell, keeping the window hidden and the console independent.
+Both the immediate ASAR swap and the wait-until-idle path use it. Probe scripts
+completed after both normal parent exit and forced termination of the test parent.
+This console requirement is also discussed in
+[Node.js issue 51018](https://github.com/nodejs/node/issues/51018).
+
+Startup output is retained in `%TEMP%\dsh-purge-powershell-launch.log`, with
+attempt identifiers, script paths, process creation and launcher exit events.
+The launcher's exit code is not a PowerShell-script or desktop-readiness result;
+the helper progress log remains necessary. No automatic retry is added. A
+synchronous launch failure is no longer marked as an ASAR swap in progress.
+PowerShell scripts have unique names and UTF-8 BOMs. No machine execution policy
+is changed. This requires a Windows system with headless conhost support; its
+presence on the user's other computer has not been measured directly.
+
 Offline regression tests cover published 0.2.0-rc.2 and 0.2.1-rc.2 assembly
 fragments, required-context behavior, section handling, newline variants,
 repeat application, and rejection of unknown context-policy changes. Full
@@ -48,7 +69,10 @@ verify the actual Electron desktop restart, ASAR handoff, model response, or
 the user's installation. Apply must still pass the normal host checks.
 Restart regression tests trap real public API calls before process operations;
 Windows helper tests use fake install files and stub process operations. They do
-not stop or start a real Harness installation.
+not stop or start a real Harness installation. Native launcher tests run only
+benign marker scripts through the real launch API and check output and survival
+after the test parent exits; they do not run the real archive swap against an
+installed application. The complete Electron restart still needs user validation.
 
 ## Install on Windows
 
@@ -57,7 +81,7 @@ not stop or start a real Harness installation.
 3. Use that desktop-installed `dsh` to install the supplied archive:
 
    ```powershell
-   dsh plugin --profile desktop add "C:\path\to\dsh-purge-1.1.71-compat.0.2.1rc2.2.tgz"
+   dsh plugin --profile desktop add "C:\path\to\dsh-purge-1.1.71-compat.0.2.1rc2.3.tgz"
    ```
 
    If using a GitHub archive, use the pinned commit URL supplied with the release,
@@ -77,6 +101,17 @@ not stop or start a real Harness installation.
    button as an update step.
 
 ## Recovery
+
+If restart does not start, preserve both launch and helper output:
+
+```powershell
+Get-Content "$env:TEMP\dsh-purge-powershell-launch.log" -Tail 80
+Get-Content "$env:TEMP\dsh-purge-asar-swap.log" -Encoding UTF8 -Tail 80
+```
+
+The first file includes native process output, which may use the system code page.
+It also records the selected system executable and the exact script path. A
+successful launcher exit alone must not be interpreted as a successful restart.
 
 If Apply fails while Harness remains open, `/purge revert` restores available
 backups for the currently located host and restores shims; inspect its output

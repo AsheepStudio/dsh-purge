@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import * as desktop from "../lib/desktop.js";
 import { hostFs } from "../lib/extract-asar.js";
+import { restartSealedDesktopIfNeeded } from "../lib/core.js";
 
 // The production WSH script currently contains non-ASCII comments, so ordinary
 // calls select PowerShell. Inject only this capability predicate to exercise the
@@ -37,7 +38,7 @@ function missing(file) {
 
 // Every disk/process operation used by these APIs is intercepted. No fixtures
 // are created on disk, installed apps are never searched, and no helper runs.
-function isolatedRestart(t, { sealed = true, clean = true, platform = "win32", synchronousSpawnError = false } = {}) {
+function isolatedRestart(t, { sealed = true, clean = true, platform = "win32", synchronousSpawnError = false, logOpenError = false } = {}) {
   const root = fileURLToPath(new URL("./fixtures/virtual-desktop-install", import.meta.url));
   const exe = path.join(root, "DeepSeek Harness.exe");
   const resources = path.join(root, "resources");
@@ -57,10 +58,14 @@ function isolatedRestart(t, { sealed = true, clean = true, platform = "win32", s
   const spawned = [];
   const timers = [];
   const exits = [];
+  const opened = [];
+  const closed = [];
+  const descriptors = new Map();
   const oldExecPath = Object.getOwnPropertyDescriptor(process, "execPath");
   const oldPlatform = Object.getOwnPropertyDescriptor(process, "platform");
   const oldResources = Object.getOwnPropertyDescriptor(process, "resourcesPath");
   const oldHome = process.env.DSH_HOME;
+  const oldInstall = process.env.DSH_DESKTOP_INSTALL;
   const oldNoDeprecation = process.noDeprecation;
 
   t.after(() => {
@@ -72,6 +77,8 @@ function isolatedRestart(t, { sealed = true, clean = true, platform = "win32", s
     else delete process.resourcesPath;
     if (oldHome === undefined) delete process.env.DSH_HOME;
     else process.env.DSH_HOME = oldHome;
+    if (oldInstall === undefined) delete process.env.DSH_DESKTOP_INSTALL;
+    else process.env.DSH_DESKTOP_INSTALL = oldInstall;
     process.noDeprecation = oldNoDeprecation;
   });
 
@@ -90,6 +97,19 @@ function isolatedRestart(t, { sealed = true, clean = true, platform = "win32", s
     },
     writeFileSync(file, body) { files.set(key(file), String(body)); },
     appendFileSync(file, body) { files.set(key(file), (files.get(key(file)) ?? "") + String(body)); },
+    openSync(file, flags) {
+      if (logOpenError) throw new Error("fixture log open blocked");
+      const fd = 1000 + opened.length;
+      opened.push({ file: key(file), flags, fd });
+      descriptors.set(fd, key(file));
+      if (!files.has(key(file))) files.set(key(file), "");
+      return fd;
+    },
+    closeSync(fd) {
+      assert.ok(descriptors.has(fd), "close only an open fixture descriptor");
+      descriptors.delete(fd);
+      closed.push(fd);
+    },
     unlinkSync(file) { if (!files.delete(key(file))) throw missing(file); },
     rmSync(file) { files.delete(key(file)); directories.delete(key(file)); },
     mkdirSync(file) { directories.add(key(file)); },
@@ -98,6 +118,11 @@ function isolatedRestart(t, { sealed = true, clean = true, platform = "win32", s
     copyFileSync(from, to) {
       if (!files.has(key(from))) throw missing(from);
       files.set(key(to), files.get(key(from)));
+    },
+    renameSync(from, to) {
+      if (!files.has(key(from))) throw missing(from);
+      files.set(key(to), files.get(key(from)));
+      files.delete(key(from));
     },
   };
   for (const [name, implementation] of Object.entries(fsMethods)) {
@@ -135,7 +160,7 @@ function isolatedRestart(t, { sealed = true, clean = true, platform = "win32", s
   process.env.DSH_HOME = home;
 
   return {
-    exe, asar, prompt, files, spawned, timers, exits,
+    exe, asar, prompt, files, spawned, timers, exits, opened, closed, descriptors,
     runAllTimers() {
       // Exercise the old 250/1500/2000 ms failure windows without wall-clock waits.
       for (const timer of timers.splice(0)) timer.callback(...timer.args);
@@ -152,6 +177,29 @@ function assertDetachedLaunch(launch) {
   assert.equal(launch.child.unrefs, 1);
 }
 
+function assertPowerShellLaunch(launch, fixture, kind = "swap") {
+  const nativeRoot = process.env.SystemRoot || process.env.WINDIR;
+  const systemRoot = nativeRoot && path.isAbsolute(nativeRoot) ? nativeRoot : null;
+  const powershell = systemRoot ? path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe") : "powershell.exe";
+  assert.equal(launch.command, systemRoot ? path.join(systemRoot, "System32", "conhost.exe") : "conhost.exe");
+  assert.deepEqual(launch.args.slice(0, 10), ["--headless", powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File"]);
+  const script = launch.args[10];
+  assert.match(script, new RegExp(`dsh-purge-asar-${kind}-\\d+-[a-f0-9]+\\.ps1$`));
+  assert.equal(launch.options.detached, true, "the independent console must survive Host shutdown");
+  assert.equal(launch.options.windowsHide, true);
+  assert.equal(launch.options.shell, false);
+  assert.equal(launch.options.cwd, path.dirname(script));
+  assert.equal(launch.child.unrefs, 1);
+  assert.equal(fixture.opened.length, 1);
+  const opened = fixture.opened[0];
+  assert.equal(opened.flags, "a");
+  assert.match(opened.file, /dsh-purge-powershell-launch\.log$/);
+  assert.deepEqual(launch.options.stdio, ["ignore", opened.fd, opened.fd]);
+  assert.deepEqual(fixture.closed, [opened.fd], "parent must release its copy after spawn");
+  assert.equal(fixture.descriptors.size, 0);
+  assert.ok(fixture.files.get(path.normalize(script)).startsWith("\ufeff"), "PowerShell 5.1 needs UTF-8 BOM for script paths and diagnostics");
+}
+
 for (const runtimeKind of ["absent", "resolves", "throws", "rejects"]) {
   test(`sealed PowerShell restart leaves host alive and never invokes ${runtimeKind} runtime`, async (t) => {
     const fixture = isolatedRestart(t);
@@ -164,8 +212,7 @@ for (const runtimeKind of ["absent", "resolves", "throws", "rejects"]) {
     } };
     assert.deepEqual(desktop.scheduleAsarSwapRestart({ exe: fixture.exe, asar: fixture.asar, exit: true, runtime }), { scheduled: true });
     assert.equal(fixture.spawned.length, 1);
-    assert.equal(fixture.spawned[0].command, "powershell.exe");
-    assertDetachedLaunch(fixture.spawned[0]);
+    assertPowerShellLaunch(fixture.spawned[0], fixture);
     fixture.runAllTimers();
     await Promise.resolve();
     assert.equal(calls, 0, "the helper owns shutdown; runtime acknowledgement is not a supported assumption");
@@ -245,6 +292,69 @@ test("official sealed restart reports synchronous helper launch failure without 
   const result = desktop.restartOfficialHarness({ exe: fixture.exe, asar: fixture.asar, exit: true });
   assert.equal(result.restarting, false);
   assert.match(result.error, /fixture spawn blocked/);
+  assert.equal(fixture.opened.length, 1);
+  assert.deepEqual(fixture.closed, [fixture.opened[0].fd]);
+  assert.equal(fixture.descriptors.size, 0);
+  fixture.runAllTimers();
+  assert.deepEqual(fixture.exits, []);
+});
+
+test("PowerShell output log open failure is reported before child launch and leaves host alive", (t) => {
+  const fixture = isolatedRestart(t, { logOpenError: true });
+  const result = desktop.restartOfficialHarness({ exe: fixture.exe, asar: fixture.asar, exit: true });
+  assert.equal(result.restarting, false);
+  assert.match(result.error, /fixture log open blocked/);
+  assert.equal(fixture.spawned.length, 0);
+  assert.deepEqual(fixture.closed, []);
+  fixture.runAllTimers();
+  assert.deepEqual(fixture.exits, []);
+});
+
+test("repeated PowerShell dispatches keep unique scripts and log child exit without claiming restart success", (t) => {
+  const fixture = isolatedRestart(t);
+  assert.deepEqual(desktop.scheduleAsarSwapRestart({ exe: fixture.exe, asar: fixture.asar }), { scheduled: true });
+  assert.deepEqual(desktop.scheduleAsarSwapRestart({ exe: fixture.exe, asar: fixture.asar }), { scheduled: true });
+  assert.notEqual(fixture.spawned[0].args[10], fixture.spawned[1].args[10]);
+  assert.equal(fixture.opened.length, 2);
+  assert.deepEqual(fixture.closed, fixture.opened.map(({ fd }) => fd));
+  fixture.spawned[0].child.emit("spawn");
+  fixture.spawned[0].child.emit("exit", 17, null);
+  fixture.runAllTimers();
+  assert.deepEqual(fixture.exits, []);
+  assert.match(fixture.logs(), /17/);
+  assert.equal(fixture.descriptors.size, 0);
+});
+
+test("sealed core restart does not report an ASAR swap when synchronous helper launch fails", (t) => {
+  const fixture = isolatedRestart(t, { synchronousSpawnError: true });
+  const result = restartSealedDesktopIfNeeded({ surface: "desktop", execPath: fixture.exe });
+  assert.equal(result.restarting, false);
+  assert.equal(result.asarSwap, false);
+  assert.match(result.error, /fixture spawn blocked/);
+  fixture.runAllTimers();
+  assert.deepEqual(fixture.exits, []);
+});
+
+test("idle ASAR rename uses the independent PowerShell console and avoids duplicate dispatch", (t) => {
+  const fixture = isolatedRestart(t);
+  assert.deepEqual(desktop.scheduleAsarRenameWhenIdle({ exe: fixture.exe, asar: fixture.asar }), { pending: true });
+  assertPowerShellLaunch(fixture.spawned[0], fixture, "rename-when-idle");
+  const lock = `${fixture.asar}.rename-pending`;
+  assert.ok(fixture.files.has(lock));
+  const args = fixture.spawned[0].args;
+  assert.equal(args[args.indexOf("-LockPath") + 1], lock);
+  assert.deepEqual(desktop.scheduleAsarRenameWhenIdle({ exe: fixture.exe, asar: fixture.asar }), { pending: true, already: true });
+  assert.equal(fixture.spawned.length, 1);
+  fixture.runAllTimers();
+  assert.deepEqual(fixture.exits, []);
+});
+
+test("idle ASAR rename releases its pending lock and descriptor when launch throws", (t) => {
+  const fixture = isolatedRestart(t, { synchronousSpawnError: true });
+  assert.throws(() => desktop.scheduleAsarRenameWhenIdle({ exe: fixture.exe, asar: fixture.asar }), /fixture spawn blocked/);
+  assert.equal(fixture.files.has(`${fixture.asar}.rename-pending`), false);
+  assert.deepEqual(fixture.closed, fixture.opened.map(({ fd }) => fd));
+  assert.equal(fixture.descriptors.size, 0);
   fixture.runAllTimers();
   assert.deepEqual(fixture.exits, []);
 });
