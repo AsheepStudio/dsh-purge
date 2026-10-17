@@ -28,7 +28,8 @@
   config:
     includeHarnessIdentity: false
     personaPrefix: ""
-    personaSuffix: Your working directory is {{cwd}}.
+    # Current Harness supplies the directory as required runtime context.
+    personaSuffix: ""
 
 - id: dsh-purge
   inject: [systemPrompt, tools]

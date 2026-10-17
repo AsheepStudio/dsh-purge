@@ -5,10 +5,11 @@ This is an independent compatibility build of
 commit `6c1d638d1bdcc45ede50fc30249c753d58122a51`. The original author's code,
 attribution, license, and prompts are retained. It includes the first compatibility
 delivery `d19115cc20fcfb08f1ad3548feef973ee7993e17` and second delivery
-`73811c9dd82683b3da450c71f69bbe0c72d146d2`, plus the launcher fix below.
+`73811c9dd82683b3da450c71f69bbe0c72d146d2`, and third delivery
+`690e961d95de7f8c1c2bac5c9a1b90a649c6834d`, plus the cwd template fix below.
 
-Version: `1.1.71-compat.0.2.1rc2.3`.
-Delivery branch: `fix/dsh-rc2-launch-20261018-032235`.
+Version: `1.1.71-compat.0.2.1rc2.4`.
+Delivery branch: `fix/dsh-rc2-cwd-20261018-034944`.
 
 The built-in update, channel-switch, and version-rollback operations are disabled
 in this compatibility build: they otherwise install the original upstream code
@@ -60,6 +61,38 @@ PowerShell scripts have unique names and UTF-8 BOMs. No machine execution policy
 is changed. This requires a Windows system with headless conhost support; its
 presence on the user's other computer has not been measured directly.
 
+The fourth build fixes normal turns failing before the model request with
+`unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"`.
+Harness 0.2.1-rc.2 registers `provider` and `model`, and supplies the directory
+through `working-directory:current`, a required, literal runtime context.
+The plugin bundle and its assembly overlay still added the old
+`Your working directory is {{cwd}}.` suffix. Patch status and successful restart
+do not validate the later rendering stage, so the earlier checks missed it.
+
+The bundle's default suffix is now empty. The assembly overlay only adds a cwd
+template when that assembly actually has its own defined cwd variable. For newer
+hosts it removes the exact old directory sentences from persona sections while
+preserving surrounding custom text. Literal sections retain `interpolate:false`;
+custom unknown variables still fail strict rendering. A custom sentence such as
+`My project root is {{cwd}}.` must be removed or supplied with a registered
+variable by its contributing plugin; only the old generated clauses are removed
+automatically. No global cwd variable or
+process-start directory is substituted, and required directory contexts are kept
+unchanged so the host can refresh them for each session and model request.
+This follows the published
+[system-prompt migration guidance](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.1-rc.2/packages/core/system-prompt/README.md#contribute-a-prompt-variable).
+
+Rendering regressions run the actual published `renderPrompt` and context
+renderers against the plugin's rewritten assemblies, including modern variables,
+legacy cwd variables, custom text, literal brace-containing directory paths and
+unknown-variable failures. This verifies the reported prompt-rendering error,
+not an authenticated model call on the user's computer.
+
+The fourth delivery passed 104 tests with no skips on Windows x64, Node 24.21.0
+and Windows PowerShell 5.1. This includes 25 new renderer regressions. The user
+confirmed that the third delivery restarts their desktop successfully; the
+fourth delivery's authenticated normal chat still needs validation on that PC.
+
 Offline regression tests cover published 0.2.0-rc.2 and 0.2.1-rc.2 assembly
 fragments, required-context behavior, section handling, newline variants,
 repeat application, and rejection of unknown context-policy changes. Full
@@ -81,7 +114,7 @@ installed application. The complete Electron restart still needs user validation
 3. Use that desktop-installed `dsh` to install the supplied archive:
 
    ```powershell
-   dsh plugin --profile desktop add "C:\path\to\dsh-purge-1.1.71-compat.0.2.1rc2.3.tgz"
+   dsh plugin --profile desktop add "C:\path\to\dsh-purge-1.1.71-compat.0.2.1rc2.4.tgz"
    ```
 
    If using a GitHub archive, use the pinned commit URL supplied with the release,
@@ -89,7 +122,12 @@ installed application. The complete Electron restart still needs user validation
    do not run the old plugin's Uninstall first. Its Uninstall can remove custom
    prompt and rule files.
 4. Open Harness. If you previously disabled dsh-purge in Plugins, enable it.
-5. Open dsh-purge, choose Clean, and Apply. `/purge apply` in the Harness chat is
+   When updating an already applied third build, the cwd fix needs only this
+   plugin/configuration reload: open a new chat and send an ordinary message.
+   It does not require another Clean/Apply operation or a different model.
+   If that ordinary message succeeds, the update is complete; skip steps 5-6.
+5. For an installation that has not yet applied this compatibility build's host
+   patches, open dsh-purge, choose Clean, and Apply. `/purge apply` in the Harness chat is
    also supported, but use the panel first for its desktop CLI repair step.
    A successful apply can restart the desktop app.
 6. After restart, create a new chat and run `/purge status`. Patch 40 should be

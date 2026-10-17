@@ -1,6 +1,6 @@
 {
   "name": "dsh-purge",
-  "version": "1.1.71-compat.0.2.1rc2.3",
+  "version": "1.1.71-compat.0.2.1rc2.4",
   "description": "DeepSeek Harness 破甲：让所有模型都能破甲，不同模型可换不同提示词；默认提示词面向国模「小码酱」。Jailbreak for every model — swap prompts per model. 求 Star 收藏 ⭐ 如要二开，请查看署名要求部分",
   "type": "module",
   "main": "lib/index.js",
@@ -59,7 +59,7 @@
     "type": "git",
     "url": "git+https://github.com/AsheepStudio/dsh-purge.git"
   },
-  "homepage": "https://github.com/AsheepStudio/dsh-purge/blob/fix/dsh-rc2-launch-20261018-032235/docs/compat-0.2.1-rc.2.md",
+  "homepage": "https://github.com/AsheepStudio/dsh-purge/blob/fix/dsh-rc2-cwd-20261018-034944/docs/compat-0.2.1-rc.2.md",
   "bugs": {
     "url": "https://github.com/YuJunZhiXue/dsh-purge/issues"
   },
@@ -79,9 +79,9 @@
     },
     "install": {
       "preferred": "tarball",
-      "tarball": "https://github.com/AsheepStudio/dsh-purge/archive/refs/heads/fix/dsh-rc2-launch-20261018-032235.tar.gz",
-      "zip": "https://github.com/AsheepStudio/dsh-purge/archive/refs/heads/fix/dsh-rc2-launch-20261018-032235.zip",
-      "git": "https://github.com/AsheepStudio/dsh-purge.git#fix/dsh-rc2-launch-20261018-032235"
+      "tarball": "https://github.com/AsheepStudio/dsh-purge/archive/refs/heads/fix/dsh-rc2-cwd-20261018-034944.tar.gz",
+      "zip": "https://github.com/AsheepStudio/dsh-purge/archive/refs/heads/fix/dsh-rc2-cwd-20261018-034944.zip",
+      "git": "https://github.com/AsheepStudio/dsh-purge.git#fix/dsh-rc2-cwd-20261018-034944"
     }
   },
   "publishConfig": {

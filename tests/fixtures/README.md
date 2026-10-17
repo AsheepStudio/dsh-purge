@@ -30,6 +30,18 @@ SHA-256 of the original `package/lib/index.js` files:
 The official package's MIT license is retained in
 `dsh-system-prompt-LICENSE`.
 
+`system-prompt-0.2.1-rc.2-renderer.mjs` adds literal excerpts from the same
+**unpatched** 0.2.1-rc.2 tarball: `package/lib/index.js` lines 62–65 (the two
+interpolation regular expressions) and lines 108–182 (`renderPrompt`, the
+context renderers, and `interpolate`, including their original comments).
+Only a provenance comment, a separating blank line, and a final ES module
+export statement are added. It does not copy the plugin's renderer patches or
+reimplement interpolation. Its LF-normalized SHA-256 is
+`579f2a84a64f6d3ce86faaffc2c7c32ec904c5e31c4074a3914fb1dbb4a4b4b5`.
+`cwd-prompt-compat.test.mjs` invokes these official renderers after the real
+plugin assembly rewrite, so unknown custom variables must still throw and
+literal runtime contexts must remain literal.
+
 `system-prompt-legacy.json` freezes the five literal prior-patch fragments from
 patch #40's string replacements in upstream `dsh-purge` 1.1.71 `lib/core.js`
 (MIT, YuJunZhiXue). These fixtures exercise upgrades from previously emitted
