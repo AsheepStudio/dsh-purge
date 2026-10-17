@@ -1,3 +1,7 @@
+> Independent compatibility build `1.1.71-compat.0.2.1rc2.1`: see
+> [Harness 0.2.1-rc.2 compatibility, validation scope, and installation](docs/compat-0.2.1-rc.2.md).
+> Original project and author: [YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge).
+
 <p align="center">
   <img src="docs/banner.svg" alt="dsh-purge" width="720">
 </p>

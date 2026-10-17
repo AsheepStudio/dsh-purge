@@ -1,0 +1,27 @@
+[
+  {
+    "name": "legacy-1",
+    "expectedChanged": true,
+    "source": "\t\tconst dshPurgeInject = (assembly.sections || []).filter((s) => String(s && s.name || \"\").startsWith(\"dsh-purge\")).map((s) => String(s.text || \"\")).filter((t) => t.length > 0).join(\"\\n\\n\");\n\t\tconst transformed = await this.ctx.waterfall(scopeTarget(this, scope), \"system-prompt/assemble\", assembly, context, () => Promise.resolve(assembly));\n\t\tif (completeSection === void 0 && !runtimeContextSuppressed) return transformed;\n\t\treturn {\n\t\t\t...transformed,\n\t\t\tsections: completeSection === void 0 ? transformed.sections : (function (complete, inject) {\n\t\t\t\tconst base = { ...complete };\n\t\t\t\tif (!inject) return [base];\n\t\t\t\tif (String(base.text || \"\").includes(inject)) return [base];\n\t\t\t\treturn [{ ...base, text: inject + \"\\n\\n\" + base.text }]; // [dsh-purge] complete prompt keeps inject\n\t\t\t})(completeSection, dshPurgeInject),\n\t\t\tcontexts: runtimeContextSuppressed ? [] : transformed.contexts\n\t\t};"
+  },
+  {
+    "name": "legacy-2",
+    "expectedChanged": true,
+    "source": "\t\tconst transformed = await this.ctx.waterfall(scopeTarget(this, scope), \"system-prompt/assemble\", assembly, context, () => Promise.resolve(assembly));\n\t\tconst dshPurgeSections = (transformed.sections || []).filter((s) => String(s && s.name || \"\").startsWith(\"dsh-purge\") && String(s.text || \"\").length > 0);\n\t\tif (completeSection === void 0 && !runtimeContextSuppressed) return transformed;\n\t\treturn {\n\t\t\t...transformed,\n\t\t\tsections: completeSection === void 0 ? transformed.sections : (function (complete, purge) {\n\t\t\t\tconst base = { ...complete };\n\t\t\t\treturn [...purge, base]; // [dsh-purge] complete prompt keeps waterfall inject\n\t\t\t})(completeSection, dshPurgeSections),\n\t\t\tcontexts: runtimeContextSuppressed ? [] : transformed.contexts\n\t\t};"
+  },
+  {
+    "name": "legacy-3",
+    "expectedChanged": true,
+    "source": "\t\tconst transformed = await this.ctx.waterfall(scopeTarget(this, scope), \"system-prompt/assemble\", assembly, context, () => Promise.resolve(assembly));\n\t\tconst dshPurgeSections = (transformed.sections || []).filter((s) => String(s && s.name || \"\").startsWith(\"dsh-purge\") && String(s.text || \"\").length > 0);\n\t\tconst dshPurgeRest = (transformed.sections || []).filter((s) => !String(s && s.name || \"\").startsWith(\"dsh-purge\"));\n\t\t\t\tif (completeSection === void 0 && !runtimeContextSuppressed) return { ...transformed, sections: [...dshPurgeSections, ...dshPurgeRest] }; // [dsh-purge] every mode keeps system inject\n\t\treturn {\n\t\t\t...transformed,\n\t\t\tsections: completeSection === void 0 ? [...dshPurgeSections, ...dshPurgeRest] : (function (complete, purge) {\n\t\t\t\tconst base = { ...complete };\n\t\t\t\treturn [...purge, base]; // [dsh-purge] complete prompt keeps waterfall inject\n\t\t\t})(completeSection, dshPurgeSections),\n\t\t\tcontexts: runtimeContextSuppressed ? [] : transformed.contexts\n\t\t};"
+  },
+  {
+    "name": "legacy-4-current-output",
+    "expectedChanged": false,
+    "source": "\t\tconst transformed = await this.ctx.waterfall(scopeTarget(this, scope), \"system-prompt/assemble\", assembly, context, () => Promise.resolve(assembly));\n\t\tconst dshPurgeSections = (transformed.sections || []).filter((s) => String(s && s.name || \"\").startsWith(\"dsh-purge\") && String(s.text || \"\").length > 0);\n\t\tconst dshPurgeRest = (transformed.sections || []).filter((s) => !String(s && s.name || \"\").startsWith(\"dsh-purge\"));\n\t\tif (completeSection === void 0 && !runtimeContextSuppressed) return { ...transformed, sections: [...dshPurgeSections, ...dshPurgeRest] }; // [dsh-purge] every mode keeps system inject\n\t\treturn {\n\t\t\t...transformed,\n\t\t\tsections: completeSection === void 0 ? [...dshPurgeSections, ...dshPurgeRest] : (function (complete, purge, rest) {\n\t\t\t\tconst base = { ...complete };\n\t\t\t\tconst tail = rest.filter((s) => String(s?.name || \"\") !== String(base.name || \"\"));\n\t\t\t\treturn [...purge, ...tail, base]; // [dsh-purge] complete prompt keeps inject + agent-instructions\n\t\t\t})(completeSection, dshPurgeSections, dshPurgeRest),\n\t\t\tcontexts: runtimeContextSuppressed ? [] : transformed.contexts\n\t\t};"
+  },
+  {
+    "name": "legacy-5",
+    "expectedChanged": true,
+    "source": "\t\tconst transformed = await this.ctx.waterfall(scopeTarget(this, scope), \"system-prompt/assemble\", assembly, context, () => Promise.resolve(assembly));\n\t\tconst dshPurgeSections = (transformed.sections || []).filter((s) => String(s && s.name || \"\").startsWith(\"dsh-purge\") && String(s.text || \"\").length > 0);\n\t\tconst dshPurgeRest = (transformed.sections || []).filter((s) => !String(s && s.name || \"\").startsWith(\"dsh-purge\"));\n\t\tif (completeSection === void 0 && !runtimeContextSuppressed) return { ...transformed, sections: [...dshPurgeRest, ...dshPurgeSections] }; // [dsh-purge] inject last after closer\n\t\treturn {\n\t\t\t...transformed,\n\t\t\tsections: completeSection === void 0 ? [...dshPurgeRest, ...dshPurgeSections] : (function (complete, purge, rest) {\n\t\t\t\tconst base = { ...complete };\n\t\t\t\tconst tail = rest.filter((s) => String(s?.name || \"\") !== String(base.name || \"\"));\n\t\t\t\treturn [...tail, base, ...purge]; // [dsh-purge] inject last after closer\n\t\t\t})(completeSection, dshPurgeSections, dshPurgeRest),\n\t\t\tcontexts: runtimeContextSuppressed ? [] : transformed.contexts\n\t\t};"
+  }
+]
