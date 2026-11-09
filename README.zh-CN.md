@@ -1,5 +1,5 @@
-> 本分支为独立兼容修正版 `1.1.71-compat.0.2.1rc2.4`，保留提示词与 Windows 重启修复，并修复普通对话的 unknown prompt variable "{{cwd}}" 错误。
-> [修改范围、验证限制与安装说明](docs/compat-0.2.1-rc.2.md)。
+> 本分支为独立兼容修正版 `1.1.71-compat.0.2.2rc1.1`，适配新版工具组装结构，并保留此前 cwd 与 Windows 重启修复。
+> [修改范围、验证限制与安装说明](docs/compat-0.2.2-rc.1.md)。
 > 原项目及作者：[YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge)。
 
 <p align="center">

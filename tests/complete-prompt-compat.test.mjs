@@ -10,7 +10,7 @@ const patch = ALL_PATCHES.find((entry) => entry.id === 40);
 assert.ok(patch, "the real patch #40 must be exported");
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
-const official = new Map(["0.2.0-rc.2", "0.2.1-rc.2"].map((version) => [
+const official = new Map(["0.2.0-rc.2", "0.2.1-rc.2", "0.2.2-rc.1"].map((version) => [
   version,
   fixture(`system-prompt-${version}.fragment.txt`),
 ]));
@@ -19,7 +19,7 @@ const legacy = JSON.parse(fixture("system-prompt-legacy.json"));
 function compile(source) {
   return new AsyncFunction(
     "scopeTarget", "scope", "assembly", "context", "completeSection",
-    "runtimeContextSuppressed", "contextByName", source,
+    "runtimeContextSuppressed", "contextByName", "tools", source,
   );
 }
 
@@ -27,7 +27,7 @@ function freezeEntries(entries) {
   return Object.freeze(entries.map((entry) => Object.freeze(entry)));
 }
 
-async function exercise(source, { complete, suppressed }) {
+async function exercise(source, { complete, suppressed, providerOwnedTools = false, waterfallTools = true }) {
   const completeSection = complete ? Object.freeze({ name: "preset", text: "complete preset", interpolate: false }) : undefined;
   const sections = freezeEntries([
     { name: "preset", text: "waterfall duplicate one" },
@@ -55,7 +55,8 @@ async function exercise(source, { complete, suppressed }) {
   });
   const tools = Object.freeze([{ name: "fixture-tool" }]);
   const variables = Object.freeze({ fixture: "value" });
-  const transformed = Object.freeze({ sections, contexts, tools, variables, extension: "kept" });
+  const contributedTools = providerOwnedTools ? Object.freeze([{ name: "waterfall-tools-must-not-replace-provider-tools" }]) : tools;
+  const transformed = Object.freeze({ sections, contexts, ...(waterfallTools ? { tools: contributedTools } : {}), variables, extension: "kept" });
   const scope = Object.freeze({ id: "fixture-scope" });
   const context = Object.freeze({ scope });
   const target = Object.freeze({ id: "fixture-target" });
@@ -78,7 +79,7 @@ async function exercise(source, { complete, suppressed }) {
     assert.equal(actualScope, scope);
     return target;
   };
-  const result = await compile(source).call(host, scopeTarget, scope, assembly, context, completeSection, suppressed, contextByName);
+  const result = await compile(source).call(host, scopeTarget, scope, assembly, context, completeSection, suppressed, contextByName, tools);
   assert.equal(calls, 1, "the actual waterfall must run exactly once");
   assert.equal(result.tools, tools);
   assert.equal(result.variables, variables);
@@ -123,11 +124,12 @@ for (const [version, source] of official) {
       test(`${version}: complete=${complete}, runtimeContextSuppressed=${suppressed}`, async () => {
         const output = applyReplacementsToText(source, patch);
         assert.equal(output.changed, true);
-        const outcome = await exercise(output.text, { complete, suppressed });
+        const outcome = await exercise(output.text, { complete, suppressed, providerOwnedTools: version === "0.2.2-rc.1" });
         checkSections(outcome, complete);
+        if (version === "0.2.2-rc.1") assert.notEqual(outcome.result.tools, outcome.transformed.tools);
         if (!suppressed) {
           assert.equal(outcome.result.contexts, outcome.contexts, "unsuppressed contexts must keep their array identity");
-        } else if (version === "0.2.1-rc.2") {
+        } else if (version !== "0.2.0-rc.2") {
           assert.deepEqual(outcome.result.contexts, [outcome.contexts[0]]);
           assert.equal(outcome.result.contexts[0], outcome.contexts[0], "keep transformed required context objects");
           assert.notEqual(outcome.result.contexts[0], outcome.definitions[0], "do not restore stale pre-waterfall content");
@@ -145,6 +147,21 @@ test("0.2.1 upstream baseline preserves required contexts but drops injected com
   assert.deepEqual(result.contexts, [contexts[0]]);
   assert.equal(result.contexts[0], contexts[0]);
 });
+
+for (const complete of [false, true]) {
+  for (const suppressed of [false, true]) {
+    test(`0.2.2 retains provider-owned tools when the waterfall omits tools (complete=${complete}, suppressed=${suppressed})`, async () => {
+      const source = official.get("0.2.2-rc.1");
+      const options = { complete, suppressed, providerOwnedTools: true, waterfallTools: false };
+      await exercise(source, options);
+      const patched = applyReplacementsToText(source, patch);
+      assert.equal(patched.changed, true);
+      const outcome = await exercise(patched.text, options);
+      checkSections(outcome, complete);
+      assert.equal(Object.hasOwn(outcome.transformed, "tools"), false);
+    });
+  }
+}
 
 for (const { name, source, expectedChanged } of legacy) {
   for (const newline of ["LF", "CRLF"]) {
@@ -183,3 +200,17 @@ test("the host guard still rejects empty, unrelated, or identity-bearing source"
     assert.equal(hostPromptKeepsInject(source), false);
   }
 });
+
+for (const [name, alter] of [
+  ["different required predicate", source => source.replace("entry.required === true", "entry.required !== false")],
+  ["changed tool source", source => source.replace(/\n\t\t\ttools,?\n/g, "\n\t\t\ttools: transformed.tools,\n")],
+  ["missing tools in fast return", source => source.replace("\n\t\t\ttools\n", "\n")],
+  ["missing tools in complete return", source => source.replace("\n\t\t\ttools,\n", "\n")],
+]) {
+  test(`0.2.2 unknown source fails closed: ${name}`, () => {
+    const source = alter(official.get("0.2.2-rc.1"));
+    assert.notEqual(source, official.get("0.2.2-rc.1"));
+    assert.deepEqual(applyReplacementsToText(source, patch), { text: source, changed: false });
+    assert.equal(hostPromptKeepsInject(source), false);
+  });
+}
