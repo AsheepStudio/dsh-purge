@@ -94,10 +94,12 @@ for (const mode of ["parent-waits", "parent-exits"]) {
   test(`native PowerShell launch captures output and runs when ${mode}`, { skip: process.platform !== "win32", timeout: 30000 }, async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-purge-launch-fixture-"));
     const expectedParent = path.resolve(os.tmpdir());
-    t.after(() => {
+    t.after(async () => {
       assert.equal(path.dirname(path.resolve(root)), expectedParent);
       assert.match(path.basename(root), /^dsh-purge-launch-fixture-/);
-      fs.rmSync(root, { recursive: true, force: true });
+      // The benign script writes its completion marker just before PowerShell
+      // and conhost release the fixture as their working directory.
+      await fs.promises.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
     const runnerPath = path.join(root, "native-launch-runner.mjs");
     fs.writeFileSync(runnerPath, runner);
@@ -112,8 +114,16 @@ for (const mode of ["parent-waits", "parent-exits"]) {
     if (mode === "parent-exits") assert.ok(fs.existsSync(path.join(root, "parent-exited.txt")));
     assert.equal(await waitFor(path.join(root, "benign-completed.txt")), "benign probe completed",
       "helper must run its script and survive the launching Host exiting");
-    const output = fs.readdirSync(root).filter((name) => name.endsWith(".log"))
-      .map((name) => fs.readFileSync(path.join(root, name), "utf8")).join("\n");
+    // conhost's redirected console output can arrive after the script marker.
+    // Wait for actual stdout/stderr rather than treating the marker as a flush.
+    let output = "";
+    const outputDeadline = Date.now() + 5000;
+    while (Date.now() < outputDeadline) {
+      output = fs.readdirSync(root).filter((name) => name.endsWith(".log"))
+        .map((name) => fs.readFileSync(path.join(root, name), "utf8")).join("\n");
+      if (/native probe stdout/.test(output) && /native probe stderr/.test(output)) break;
+      await delay(50);
+    }
     assert.match(output, /native probe stdout/);
     assert.match(output, /native probe stderr/);
   });

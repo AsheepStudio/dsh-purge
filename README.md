@@ -1,4 +1,4 @@
-> Independent compatibility build `1.1.71-compat.0.2.2rc1.1`, including the previous cwd and Windows restart fixes: see
+> Independent compatibility build `1.1.71-compat.0.2.2rc1.2`, including the CLI backup crash fix and previous cwd/Windows restart fixes: see
 > [Harness 0.2.2-rc.1 compatibility, validation scope, and installation](docs/compat-0.2.2-rc.1.md).
 > Original project and author: [YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge).
 

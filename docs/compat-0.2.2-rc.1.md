@@ -1,14 +1,36 @@
 # Harness 0.2.2-rc.1 compatibility build
 
-Version: `1.1.71-compat.0.2.2rc1.1`.
-Branch: `fix/dsh-0.2.2-rc1-20261109-103415`.
+Version: `1.1.71-compat.0.2.2rc1.2`.
+Branch: `fix/dsh-rc1-cli-backup-20261109-104515`.
 Base: the complete previous delivery, commit
-`3122a04687dab823b5a88d19579d7c1c46b45409`.
+`7c4b89e5d9e674cc2a45175ec96836c6404a9e90`.
 The original author, source, prompts and licenses from
 [YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge) are retained.
 The previous [cwd and Windows restart fixes](compat-0.2.1-rc.2.md) remain included.
 
 ## Problem and resulting behavior
+
+The second 0.2.2 build fixes the reported Host crash during Apply:
+`ENOENT ... rename ... dsh.cmd.dsh-purge.bak.<pid>.<time>.copytmp`.
+The synchronous CLI repair API started `atomicCopyFile` without awaiting or
+handling its Promise, then immediately changed the launcher. Any later copy
+failure escaped the surrounding synchronous catch and terminated the Host.
+Millisecond-only temporary names also collided during concurrent copies; this
+was independently reproduced with ENOENT and EBUSY in a disposable directory.
+
+CLI repair now completes a synchronous atomic backup before changing a launcher.
+Official `resources/runtime/cli/bin` directories are recognized as sealed
+command directories, so backups use the external `dsh-purge/shim-backups` path.
+Existing legacy backups are retained and preferred when an external backup is
+first created. A backup failure returns an error report, leaves the launcher
+unchanged and stops the sealed-host preparation before restart. No backup
+Promise is left running. Atomic copy/write helpers use UUID temporary names and
+remove their own partial files on failure.
+
+Tests cover same-millisecond concurrent copy/write operations, actual CLI repair
+against a disposable desktop layout, backup ordering, repeat repair, preserving
+legacy/existing backups, failed backup and rename, and partial disk-full writes.
+They never execute the fixture application.
 
 The published `@deepseek-ai/dsh-system-prompt@0.2.2-rc.1` restores provider-owned
 `tools` after the prompt waterfall in both the ordinary and complete-prompt
@@ -38,8 +60,12 @@ missing tools returned by waterfall listeners. Provider tools remain intact in
 all 0.2.2 modes. Unrecognized tool/context policies remain unmatched.
 
 Existing strict-rendering, cwd, updater and Windows restart regressions remain
-part of the suite. All 120 tests passed with no skips on Windows x64 and Node
-24.21.0. A separate local check loaded the real bundled Cordis 4.1.0 and the
+part of the suite. All 130 tests passed with no skips on Windows x64 and Node
+24.21.0. The ten CLI-backup tests also passed under the installed Electron
+44.7.0 / Node 24.21.0, exercising its real original-fs routing with disposable
+files. The native launcher regression now waits for redirected console output
+to flush and for fixture directory handles to be released before cleanup.
+A separate local check of the first 0.2.2 build loaded the real bundled Cordis 4.1.0 and the
 complete 0.2.2-rc.1 SystemPrompt module with an in-process source hook. Its four
 ordinary/complete and context-suppression combinations passed actual assembly,
 strict rendering, provider-tool retention and dynamic directory refresh checks.
@@ -59,13 +85,13 @@ does not itself apply host-file patches or schedule an application restart.
 If `dsh` is on PATH:
 
 ```powershell
-dsh plugin --profile desktop add "C:\full\path\dsh-purge-1.1.71-compat.0.2.2rc1.1.tgz"
+dsh plugin --profile desktop add "C:\full\path\dsh-purge-1.1.71-compat.0.2.2rc1.2-full-source.tgz"
 ```
 
 Otherwise the installed official launcher can be addressed directly:
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add "C:\full\path\dsh-purge-1.1.71-compat.0.2.2rc1.1.tgz"
+& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add "C:\full\path\dsh-purge-1.1.71-compat.0.2.2rc1.2-full-source.tgz"
 ```
 
 Open Harness and its dsh-purge panel. For a first installation, Apply performs

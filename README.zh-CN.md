@@ -1,4 +1,4 @@
-> 本分支为独立兼容修正版 `1.1.71-compat.0.2.2rc1.1`，适配新版工具组装结构，并保留此前 cwd 与 Windows 重启修复。
+> 本分支为独立兼容修正版 `1.1.71-compat.0.2.2rc1.2`，修复 CLI 备份导致的 Host 崩溃，并保留此前工具组装、cwd 与 Windows 重启修复。
 > [修改范围、验证限制与安装说明](docs/compat-0.2.2-rc.1.md)。
 > 原项目及作者：[YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge)。
 
